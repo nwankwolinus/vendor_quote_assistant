@@ -69,21 +69,33 @@ def upload_invoice_ai(file: UploadFile = File(...)):
         #GPT prompt
         prompt = f"""
         Today is {date.today().isoformat()}.
-You are an invoice processing assistant.
+You are an AI assistant specialized in reading and structuring invoice documents.
 
-Extract the following details this vendor invoice text:
+Your task is to analyze the following **raw text extracted from a vendor's invoice PDF** and return a **well-structured JSON object** with the following fields:
 
-1. Vendor name
-2. Invoice or PO date
-3. A list of items (description, quantity, unit price, total price)
-4. Total before VAT
-5. VAT amount
-6. Discount
-7. Grand total
+- "vendor_name": Name of the company issuing the invoice
+- "invoice_date": The date on the invoice or PO
+- "items": A list of items, where each item contains:
+  - "description": Description of the item
+  - "quantity": Number of units
+  - "unit_price": Price per unit
+  - "total_price": Total for that line
+- "total_before_vat": Total cost before VAT is added
+- "vat_amount": Value-added tax (VAT) amount
+- "discount": Any discount applied (if any, else 0)
+- "grand_total": Final total after applying VAT and discount
 
-Response in JSON format
+Important Instructions:
+- Respond **only in JSON format** (no markdown or explanation).
+- If something is missing, provide `null` or `"Not found"` instead of skipping the field.
+- If no items are found, return `"items": []` but still return the other fields.
+- Keep all number values as **plain numbers** (no commas, currency symbols, or formatting).
+- All keys must be **lowercase with underscores**, not camelCase or natural text.
+- Do not wrap the response in markdown backticks.
 
 ---
+
+Here is the extracted text from the invoice:
 {raw_text}
 ---
 """
@@ -95,11 +107,29 @@ Response in JSON format
             invoice_data = json.loads(json_str)
         except json.JSONDecodeError as e:
             raise HTTPException(status_code=400, detail=f"GPT response was not valid json: {e}")
+        
+        # save each item to Google Sheet
+        saved_items = []
+        for item in invoice_data["items"]:
+            quote = {
+                "vendor": invoice_data["vendor_name"],
+                "item": item["description"],
+                "price": item["unit_price"],
+                "quantity": item["quantity"],
+                "date": invoice_data["invoice_date"]
+            }
+            save_quote_to_sheet(quote)
+            saved_items.append(quote)
 
         # Clean up the temporary file
         os.remove(temp_path)
 
-        return{"extracted_invoice": invoice_data}
+        return{
+            "message": "Invoice data extracted and saved successfully",
+            "vendor": invoice_data["vendor_name"],
+            "items_saved": len(saved_items),
+            "sample": saved_items[:3]
+            }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract invoice data: {e}")

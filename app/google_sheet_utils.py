@@ -39,10 +39,11 @@ def save_quote_to_sheet(quote):
     sheet = get_sheet() 
     try:
         sheet.append_row([
-            quote.vendor,
-            quote.item,
-            str(quote.price),
-            quote.date.strftime('%Y-%m-%d')  # Format the date as string
+            quote["vendor"],
+            quote["item"],
+            str(quote["price"]),
+            str(quote["quantity"]),
+            quote["date"] 
         ])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving quote to sheet: {e}")
