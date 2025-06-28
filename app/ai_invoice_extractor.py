@@ -1,5 +1,4 @@
 import pdfplumber
-from app.openai_utils import ask_gpt
 
 def extract_text_from_pdf(pdf_path: str):
     all_text = ""
@@ -7,4 +6,3 @@ def extract_text_from_pdf(pdf_path: str):
         for page in pdf.pages:
             all_text += page.extract_text() + "\n"
     return all_text.strip()
-
