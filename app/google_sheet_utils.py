@@ -41,6 +41,8 @@ def save_quote_to_sheet(quote):
         sheet.append_row([
             quote["vendor"],
             quote["item"],
+            quote["model"],
+            quote["manufacturer"],
             str(quote["price"]),
             str(quote["quantity"]),
             quote["date"] 
@@ -55,8 +57,7 @@ def read_quotes_from_sheet():
     records = sheet.get_all_records()
     return records
 
-
-# Deifine the function recommender function
+# Define the function recommender function
 def recommend_vendor(item_name: str):
     quotes = read_quotes_from_sheet()
     item_quotes = [q for q in quotes if q['item'].lower() == item_name.lower()]
@@ -67,3 +68,67 @@ def recommend_vendor(item_name: str):
     best_quote = min(item_quotes, key=lambda x: float(x['price']))
     return f"The best vendor for {item_name} is {best_quote['vendor']} with a price of {best_quote['vendor']}"
 
+# Check for duplicate quotes
+def is_duplicate_quote(item, existing_records):
+    for record in existing_records:
+        if (
+            str(record.get("vendor", "")).strip().lower() == str(item["vendor"]).strip().lower() and
+            str(record.get("item", "")).strip().lower() == str(item["item"]).strip().lower() and
+            str(record.get("model", "")).strip().lower() == str(item["model"]).strip().lower() and
+            str(record.get("manufacturer", "")).strip().lower() == str(item["manufacturer"]).strip().lower() and
+            str(record.get("price", "")).replace(",", "") == str(item["price"]) and
+            str(record.get("date", "")).strip() == str(item["date"]).strip()
+        ):
+            return True
+    return False
+
+def bulk_save_to_sheet(items):
+    sheet = get_sheet()
+    existing_records = sheet.get_all_records()
+
+    saved = 0
+    rows_to_insert = []
+    skipped_duplicates = []
+
+    for item in items:
+        if is_duplicate_quote(item, existing_records):
+            skipped_duplicates.append(item)
+            continue
+
+        row = [
+            item["vendor"],
+            item["item"],
+            item["model"],  # Includes the kA rating
+            item["manufacturer"],
+            str(item["price"]),
+            str(item.get("quantity", 1)),
+            item.get("date", "")
+        ]
+        rows_to_insert.append(row)
+
+    try:
+        if rows_to_insert:
+            sheet.append_rows(rows_to_insert)
+            saved = len(rows_to_insert)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving batch to sheet: {e}")
+
+    return {
+        "saved_count": saved,
+        "skipped_duplicates": skipped_duplicates
+    }
+
+def save_quote_to_sheet(quote):
+    sheet = get_sheet() 
+    try:
+        sheet.append_row([
+            quote["vendor"],
+            quote["item"],
+            quote["model"],  # Includes kA rating
+            quote["manufacturer"],
+            str(quote["price"]),
+            str(quote.get("quantity", 1)),
+            quote.get("date", "")
+        ])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving quote to sheet: {e}")
