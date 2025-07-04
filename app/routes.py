@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from app.openai_utils import ask_gpt, recommend_best_vendor
 from app.model import Quote
 # from app.storage import save_quotes_to_csv, load_quotes_from_csv
 from app.google_sheet_utils import save_quote_to_sheet, read_quotes_from_sheet, bulk_save_to_sheet
 import os
-from app.pdf_utils import extract_items_from_pdf_ai
+from app.pdf_utils import extract_items_from_pdf_ai, extract_by_instruction
+import shutil
+import re
+import json
+from datetime import date
 
 router = APIRouter()
 
@@ -48,7 +52,11 @@ def get_recommendation(item_name: str = Query(..., description="Name of the item
         raise HTTPException(status_code=500, detail=f"Failed to get recommendation: {str(e)}")
     
 @router.post("/upload_invoice_ai")
-def upload_invoice_ai(file: UploadFile = File(...)):
+def upload_invoice_ai(
+    file: UploadFile = File(...),
+    instruction: str = Form(None) # Optional 
+    
+):
     try:
         # Ensure the temp directory exists
         os.makedirs("temp", exist_ok=True)
@@ -56,21 +64,53 @@ def upload_invoice_ai(file: UploadFile = File(...)):
         # Save the uploaded file to into /temp directory
         temp_path = f"temp/{file.filename}"
         with open(temp_path, "wb") as f:
-            f.write(file.file.read())
-        
-        extract_items = extract_items_from_pdf_ai(temp_path)
-        saved_accounts = bulk_save_to_sheet(extract_items)
+            shutil.copyfileobj(file.file, f)
+
+        # Determine which method to use based on instruction presence
+        if instruction:
+            raw_result = extract_by_instruction(temp_path, instruction)
+
+            # Extract json block from gpt response
+            json_block = re.search(r"\[\s*{.*?}\s*\]", raw_result, re.DOTALL)
+            if not json_block:
+                raise ValueError("No valid JSON block found in AI response")
+            
+            items = json.loads(json_block.group(0))
+
+            for item in items:
+                quote = {
+                     "vendor": item.get("vendor", "Unknown"),
+                     "item": item.get("item") or item.get("description", "Unknown"),
+                     "model": item.get("model") or item.get("range", "Unknown"),
+                     "manufacturer": item.get("manufacturer", "Unknown"),
+                     "price": item.get("price", "Unknown"),
+                     "quantity": item.get("quantity", 1),
+                     "part_number": item.get("part_number", "Unknown"),
+                     "date": item.get("date", str(date.today()))
+                }
+                save_quote_to_sheet(quote)
+
+            response = {
+                "mode": "instruction",
+                "instruction": instruction,
+                "total_saved": len(items),
+                "sample_saved": items[:3] 
+            }
+        else:
+            items = extract_items_from_pdf_ai(temp_path)
+            for item in items:
+                save_quote_to_sheet(item)
+            
+            response = {
+                "mode": "structured_auto",
+                "total_saved": len(items),
+                "sample_saved": items[:3]
+            }
 
         os.remove(temp_path) # Clean up the temporary file)
 
-        return {
-            "message": f" Extracted {len(extract_items)} items. Saved {saved_accounts} items to Google Sheet.",
-            "sample": extract_items[:3] # Return first 3 items as sample
-        }
+        return response
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {str(e)}")
-
-
-
 

@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 import gspread 
 from google.oauth2.service_account import Credentials
 from fastapi import HTTPException
+from datetime import date
 
 load_dotenv()
 
@@ -122,13 +123,13 @@ def save_quote_to_sheet(quote):
     sheet = get_sheet() 
     try:
         sheet.append_row([
-            quote["vendor"],
-            quote["item"],
-            quote["model"],  # Includes kA rating
-            quote["manufacturer"],
-            str(quote["price"]),
+            quote.get("vendor", "Unknown"),
+            quote.get("item") or quote.get("description", "Unknown"),
+            quote.get("model") or quote.get("range", "Unknown"),
+            quote.get("manufacturer", "Unknown"),
+            str(quote.get("price", "Unknown")),
             str(quote.get("quantity", 1)),
-            quote.get("date", "")
+            quote.get("date", str(date.today()))
         ])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving quote to sheet: {e}")

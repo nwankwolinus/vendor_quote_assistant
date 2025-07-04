@@ -65,4 +65,27 @@ def extract_items_from_pdf_ai(pdf_path: str):
 
     return all_items
 
+def extract_by_instruction(pdf_path: str, instruction: str) -> str:
+    pages = extract_pdf_pages(pdf_path)
+    text = "\n".join(pages)
+
+    prompt = f"""
+Today is {date.today()}.
+
+The user uploaded the following document and gave this instruction:
+\"\"\"
+{instruction}
+\"\"\"
+
+Document text:
+\"\"\"
+{text}
+\"\"\"
+
+Please follow the instruction carefully and return a structured answer (plain text or JSON).
+"""
+
+    return ask_gpt(prompt)
+
+
 
